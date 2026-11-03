@@ -302,6 +302,111 @@ origin  https://github.com/80gina/E1-1.git (push)
 - 확인 방법: 프롬프트의 경로가 `...\sns>`임을 확인했다. 저장소는 `...\sns\workstation`이다.
 - 해결: `cd C:\Users\yello\코디세이\sns\workstation`으로 이동한 뒤 다시 실행했고, `git status`가 깨끗해졌다. (증거: `screenshots/30_not_a_git_repository.png`, `27_bind_mount_before_after.png`)
 
+### 문제 6: `docker compose ps`에서 `no configuration file provided: not found` / `no such service: helper`
+- 문제: 보너스 실습 중 `docker compose ps`가 설정 파일이 없다고 했고, 다른 폴더에서 `docker compose start helper`를 하자 `no such service: helper`가 나왔다.
+- 원인 가설: `docker compose`는 **현재 폴더의 `docker-compose.yml`**을 읽는데, 파일이 없는 폴더(`workstation`)이거나 다른 프로젝트의 폴더(`compose-basic`)에서 실행했다. 서비스 이름(`helper`)은 그 폴더의 파일에 적힌 것만 유효하다.
+- 확인 방법: 프롬프트 경로를 확인했다. 파일은 `bonus\compose-basic`, `bonus\compose-multi`에 각각 있다.
+- 해결: 해당 폴더로 `cd`한 뒤 다시 실행했다. (`-f` 옵션으로 파일 경로를 지정해도 된다.)
+- 증거: `screenshots/42_compose_no_config_fix.png`, `40_compose_basic.png`, `48_compose_ops_stop_start.png`
+
+## 6-1) 보너스 과제 (Docker Compose, 환경 변수)
+파일: `bonus/compose-basic/docker-compose.yml`, `bonus/compose-multi/docker-compose.yml`, `bonus/compose-multi/.env`
+
+### 보너스 1. Docker Compose 기초 (단일 서비스)
+`docker run -p 8090:80 -v ... nginx:alpine` 같은 긴 명령을 파일로 문서화했다.
+```powershell
+PS ...\bonus\compose-basic> cat docker-compose.yml
+services:
+  web:
+    image: nginx:alpine
+    container_name: compose-web
+    ports:
+      - "8090:80"
+    volumes:
+      - ../../site:/usr/share/nginx/html:ro
+PS> docker compose up -d
+ ✔ Network compose-basic_default  Created
+ ✔ Container compose-web          Started
+PS> docker compose ps          # compose-web  Up  0.0.0.0:8090->80/tcp
+PS> curl.exe http://localhost:8090   # 숲해설 프로그램 안내
+PS> docker compose down
+ ✔ Container compose-web Removed
+ ✔ Network compose-basic_default Removed
+```
+- 배움: 실행 명령이 "문서화된 실행 설정"이 되어 같은 환경을 누구나 같은 명령(`docker compose up -d`)으로 재현할 수 있다.
+- 증거: `screenshots/40_compose_basic.png`, `41_compose_basic_browser.png`, `42_compose_no_config_fix.png`, `43_compose_down.png`
+
+### 보너스 2. Compose 멀티 컨테이너 (web + helper)
+```powershell
+PS ...\bonus\compose-multi> docker compose up -d
+ ✔ Image alpine:3.20                  Pulled
+ ✔ Network compose-multi_default      Created
+ ✔ Container compose-multi-web        Started
+ ✔ Container compose-multi-helper     Started
+PS> docker compose exec helper wget -qO- http://web
+<h1>숲해설 프로그램 안내</h1>          # 서비스 이름(web)으로 통신 성공
+PS> docker compose exec helper wget -qO- http://localhost
+wget: can't connect to remote host: Connection refused   # helper의 localhost는 자기 자신
+```
+- 배움: Compose가 같은 네트워크를 자동으로 만들고, **서비스 이름이 곧 주소**가 된다(서비스 디스커버리). 컨테이너마다 `localhost`는 자기 자신이라 다른 컨테이너는 서비스 이름으로 부른다.
+- 증거: `screenshots/44_compose_multi_up.png`, `45_compose_multi_network.png`
+
+### 보너스 3. Compose 운영 명령어 (up / ps / logs / down)
+```powershell
+PS> docker compose logs web --tail 5
+compose-multi-web | 172.18.0.3 ... "GET / HTTP/1.1" 200 252 "-" "Wget"
+compose-multi-web | 172.18.0.1 ... "GET / HTTP/1.1" 200 252 "-" "curl/8.22.0"
+PS> docker compose stop helper     # helper만 Stopped
+PS> docker compose ps -a           # helper Exited (137), web Up
+PS> docker compose start helper    # helper Started
+PS> docker compose ps              # 둘 다 Up
+PS> docker compose down            # 컨테이너와 네트워크 정리
+```
+- 배움: `up → ps → logs → down`을 상태 확인 루틴으로 쓰면 어느 서비스가 살아 있고 누가 요청했는지 바로 알 수 있다. 로그에는 요청한 쪽(Wget, curl)까지 기록된다.
+- 증거: `screenshots/47_compose_ops_logs.png`, `48_compose_ops_stop_start.png`, `49_compose_env_override.png`(down 포함)
+
+### 보너스 4. 환경 변수 활용 (포트·모드 변경)
+`docker-compose.yml`에 `"${HOST_PORT:-8091}:80"`, `APP_ENV=${APP_ENV:-dev}`로 변수를 꽂고, `.env`에 기본값(`HOST_PORT=8091`, `APP_ENV=dev`)을 두었다. 파일을 고치지 않고 터미널의 환경 변수로 바꿨다.
+```powershell
+PS> $env:HOST_PORT="8095"
+PS> $env:APP_ENV="prod"
+PS> docker compose up -d
+PS> docker compose ps
+compose-multi-web  forest-web:1.0  Up  0.0.0.0:8095->80/tcp     # 8091 -> 8095
+PS> docker compose exec helper printenv APP_ENV
+prod                                                            # dev -> prod
+PS> curl.exe http://localhost:8095                               # 접속 성공
+PS> docker compose down
+PS> Remove-Item Env:HOST_PORT; Remove-Item Env:APP_ENV           # 임시 변수 정리
+```
+- 배움: 설정(포트·모드)과 코드(compose 파일)를 분리하면 같은 파일로 dev와 prod를 다르게 실행할 수 있다. 터미널 환경 변수가 `.env`보다 우선한다.
+- 증거: `screenshots/49_compose_env_override.png`, `49a_compose_env_check.png`, `50_compose_env_cleanup.png`
+
+### 보너스 5. GitHub SSH 키 설정
+HTTPS 대신 SSH 키로 인증해 push했다. 키는 한 쌍이며, **공개키(`.pub`)만 GitHub에 등록**하고 **개인키는 내 PC의 `.ssh` 폴더에만** 둔다(저장소, 문서, 스크린샷에 포함하지 않음).
+```powershell
+PS> ssh -V
+OpenSSH_for_Windows_9.5p2
+PS> ssh-keygen -t ed25519 -C "github-ssh-e1"     # 키 한 쌍 생성 (기본 위치 ~\.ssh\id_ed25519)
+Your public key has been saved in C:\Users\yello/.ssh/id_ed25519.pub
+SHA256:K8fl5VUVOv/5w/QzirR++... github-ssh-e1
+PS> Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub | Set-Clipboard   # 공개키만 복사
+# GitHub → Settings → SSH and GPG keys → New SSH key 에 붙여넣기 (Title: 내 윈도우 PC)
+
+PS> ssh -T git@github.com
+Hi 80gina! You've successfully authenticated, but GitHub does not provide shell access.
+
+PS> git remote set-url origin git@github.com:80gina/E1-1.git
+PS> git remote -v
+origin  git@github.com:80gina/E1-1.git (fetch)
+origin  git@github.com:80gina/E1-1.git (push)
+PS> git push                                      # SSH로 push 성공 (스크린샷 55)
+```
+- GitHub에 등록된 키의 지문(`SHA256:K8fl5VUVOv...`)이 터미널에서 만든 키의 지문과 일치함을 확인했다.
+- 처음 접속할 때 GitHub 서버의 지문(`SHA256:+DiY3wvv...`)이 공식 지문과 같음을 확인하고 `yes`로 신뢰 목록에 추가했다.
+- 배움: HTTPS는 로그인 창·토큰으로 인증하고, SSH는 키 쌍으로 인증한다. 공개키(자물쇠)는 공유해도 되지만 개인키(열쇠)는 절대 공유하지 않는다.
+- 증거: `screenshots/51_ssh_keygen.png`, `52_github_ssh_key_added.png`, `53_ssh_test.png`, `54_ssh_remote.png`, `55_ssh_push.png`
+
 ## 7) 학습 정리
 - **절대/상대 경로:** 절대 경로는 드라이브 맨 앞(`C:\` 또는 `/`)부터 쓴 전체 주소(예: `C:\Users\yello\코디세이\sns\workstation`)이고, 상대 경로는 지금 위치 기준 주소(예: `site\index.html`, `..\`)다. 같은 파일도 어디서 실행하느냐에 따라 상대 경로가 달라진다.
 - **권한 r/w/x와 755, 644:** r=읽기(4), w=쓰기(2), x=실행(1)이고, 숫자는 소유자·그룹·기타 순서로 더한 값이다. 755는 `rwxr-xr-x`(소유자 전체, 나머지 읽기·실행), 644는 `rw-r--r--`(소유자 읽기·쓰기, 나머지 읽기)이다. 4.3에서 `chmod 644/700/755`로 직접 확인했다.
