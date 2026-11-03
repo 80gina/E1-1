@@ -18,7 +18,7 @@
 - [x] 포트 매핑 접속 (8080, 8081)
 - [x] 바인드 마운트 반영
 - [x] 볼륨 영속성
-- [ ] Git 설정 + GitHub/VSCode 연동
+- [x] Git 설정 + GitHub/VSCode 연동
 
 ## 4) 수행 로그와 검증 방법
 각 항목은 `목적 → 명령어 → 출력 → 스크린샷` 순서로 기록한다.
@@ -236,17 +236,39 @@ forest-note
 - 증거: `screenshots/32_volume_persist.png`
 
 ### 4.7 Git 설정과 GitHub 연동
-```bash
-git config --global user.name "(이름)"
-git config --global user.email "(이메일)"
-git config --global init.defaultBranch main
-git config --list
+```powershell
+PS> git config --global user.name
+(이름)
+PS> git config --global init.defaultBranch
+main
+PS> git config --list
+...
+init.defaultbranch=main
+user.name=(마스킹)
+user.email=(마스킹)
+remote.origin.url=https://github.com/80gina/E1-1.git
+branch.main.remote=origin
+branch.main.merge=refs/heads/main
+PS> git remote -v
+origin  https://github.com/80gina/E1-1.git (fetch)
+origin  https://github.com/80gina/E1-1.git (push)
 ```
-- VSCode GitHub 로그인 캡처: `screenshots/vscode-github.png` (토큰·이메일 마스킹)
+- 설명: `git config --list`에는 `init.defaultbranch`가 `master`(시스템 기본)와 `main`(내 설정)으로 두 번 나오는데, 뒤에 읽힌 값(`main`)이 적용된다.
+- 연동 방식: 로컬 폴더를 `git init`한 뒤 `git remote add origin`으로 GitHub 저장소를 연결하고, 원격의 기존 커밋은 `git fetch` + `git reset origin/main`으로 가져와 내 파일을 유지한 채 이어서 커밋했다.
+- 증거: `screenshots/02_git_remote_status.png`, `33_git_config.png`(이메일 마스킹), `34_git_remote.png`, `08_first_push.png`
+- VSCode GitHub 로그인: `screenshots/35_vscode_github.png`
+- VSCode 저장소 연동(`main` 브랜치 표시): `screenshots/36_vscode_source_control.png`, `36a_vscode_explorer.png`
 
 ## 5) 커스텀 이미지 설명
+- 선택한 방식: (A) 웹 서버 베이스 이미지 활용 + 정적 콘텐츠 교체
 - 베이스: `nginx:alpine`
-- LABEL: 이미지 설명 / ENV: 환경 구분(dev) / COPY: 내 안내 페이지로 교체
+- 커스텀 포인트와 목적
+  | 지시어 | 내용 | 목적 |
+  |---|---|---|
+  | `LABEL org.opencontainers.image.title="forest-guide-web"` | 이미지 이름표 | 이미지가 무엇인지 메타데이터로 식별 |
+  | `ENV APP_ENV=dev` | 환경 구분 값 | 개발/운영 환경 구분에 쓰는 설정을 코드와 분리 |
+  | `COPY site/ /usr/share/nginx/html/` | 내 안내 페이지로 교체 | 기본 nginx 페이지 대신 숲해설 안내 페이지 제공 |
+- 빌드/실행: 4.4 참고 (`docker build -t forest-web:1.0 .`, `docker run -d -p 8080:80 ...`)
 
 ## 6) 트러블슈팅 (2건 이상)
 ### 문제 1: `docker info`에서 `failed to connect to the docker API`
@@ -281,8 +303,11 @@ git config --list
 - 해결: `cd C:\Users\yello\코디세이\sns\workstation`으로 이동한 뒤 다시 실행했고, `git status`가 깨끗해졌다. (증거: `screenshots/30_not_a_git_repository.png`, `27_bind_mount_before_after.png`)
 
 ## 7) 학습 정리
-- 절대/상대 경로:
-- 권한 r/w/x와 755, 644:
-- 포트 매핑이 필요한 이유:
-- 볼륨(영속 데이터):
-- Git vs GitHub:
+- **절대/상대 경로:** 절대 경로는 드라이브 맨 앞(`C:\` 또는 `/`)부터 쓴 전체 주소(예: `C:\Users\yello\코디세이\sns\workstation`)이고, 상대 경로는 지금 위치 기준 주소(예: `site\index.html`, `..\`)다. 같은 파일도 어디서 실행하느냐에 따라 상대 경로가 달라진다.
+- **권한 r/w/x와 755, 644:** r=읽기(4), w=쓰기(2), x=실행(1)이고, 숫자는 소유자·그룹·기타 순서로 더한 값이다. 755는 `rwxr-xr-x`(소유자 전체, 나머지 읽기·실행), 644는 `rw-r--r--`(소유자 읽기·쓰기, 나머지 읽기)이다. 4.3에서 `chmod 644/700/755`로 직접 확인했다.
+- **커스텀 이미지:** 기존 `nginx:alpine` 이미지를 베이스로 `Dockerfile`에 `LABEL`, `ENV`, `COPY`를 더해 내 이미지(`forest-web:1.0`)를 만들었다.
+- **포트 매핑이 필요한 이유:** 컨테이너는 격리된 네트워크라 내부 포트(80)로 밖에서 바로 접속할 수 없다. `-p 호스트:컨테이너`로 연결해야 브라우저로 접속할 수 있고, 호스트 포트를 다르게 하면 같은 이미지로 컨테이너를 여러 개 띄울 수 있다.
+- **바인드 마운트 vs 볼륨:** 바인드 마운트는 내 PC 폴더를 그대로 공유해 수정이 즉시 반영된다(개발용). 볼륨은 Docker가 관리하는 저장소로 컨테이너를 삭제해도 데이터가 남는다(데이터 보존용).
+- **볼륨(영속 데이터):** 컨테이너 안의 데이터는 컨테이너와 함께 사라지지만, 볼륨에 저장한 데이터는 컨테이너를 지워도 새 컨테이너에 연결해 다시 읽을 수 있다(4.6).
+- **Git vs GitHub:** Git은 내 PC에서 변경 이력을 기록하는 로컬 버전 관리 도구이고, GitHub는 그 저장소를 인터넷에 올려 공유·협업하는 원격 플랫폼이다. 로컬에서 `commit`으로 기록하고 `push`로 GitHub에 올렸다.
+- **배운 점:** 오류(엔진 꺼짐, WSL 미설치, 연결 거부, 작업 폴더 착오)를 겪고 원인을 확인해 해결하는 과정이 가장 큰 학습이었다. 6) 트러블슈팅 참고.
