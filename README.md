@@ -14,8 +14,8 @@
 - [x] 권한 실습 (파일 1, 디렉토리 1)
 - [x] Docker 설치/점검
 - [x] hello-world / ubuntu 실행
-- [ ] 커스텀 이미지 빌드·실행
-- [ ] 포트 매핑 접속 (8080, 8081)
+- [x] 커스텀 이미지 빌드·실행
+- [x] 포트 매핑 접속 (8080, 8081)
 - [ ] 바인드 마운트 반영
 - [ ] 볼륨 영속성
 - [ ] Git 설정 + GitHub/VSCode 연동
@@ -160,13 +160,35 @@ u2   CPU 0.00%   MEM USAGE / LIMIT 3.434MiB / 7.549GiB   MEM 0.04%   PIDS 1
 - 참고: PowerShell에서 `docker exec ... echo "한글"`을 입력하면 명령줄에 한글이 8진수 이스케이프로 보이지만 출력은 `exec로 들어옴`으로 정상이었다.
 
 ### 4.4 커스텀 이미지·포트 매핑
-스크린샷: `screenshots/port-8080.png`, `screenshots/port-8081.png` (주소창 포함)
-```bash
-docker build -t forest-web:1.0 .
-docker run -d -p 8080:80 --name forest-8080 forest-web:1.0
-docker run -d -p 8081:80 --name forest-8081 forest-web:1.0
-curl http://localhost:8080
+**이미지 빌드**
+```powershell
+PS> docker build -t forest-web:1.0 .
+[+] Building 8.8s (7/7) FINISHED
+ => [1/2] FROM docker.io/library/nginx:alpine
+ => [2/2] COPY site/ /usr/share/nginx/html/
+ => naming to docker.io/library/forest-web:1.0
+PS> docker images
+forest-web:1.0       712c678e99f9   93.2MB
+hello-world:latest   c567b231f656   22.6kB
+ubuntu:latest        6a06111c3b0a   181MB
 ```
+- 증거: `screenshots/21_docker_build.png`
+
+**포트 매핑: 같은 이미지로 컨테이너 2개 (호스트 8080, 8081 → 컨테이너 80)**
+```powershell
+PS> docker run -d -p 8080:80 --name forest-8080 forest-web:1.0
+PS> docker run -d -p 8081:80 --name forest-8081 forest-web:1.0
+PS> docker ps
+forest-8081   forest-web:1.0   Up   0.0.0.0:8081->80/tcp
+forest-8080   forest-web:1.0   Up   0.0.0.0:8080->80/tcp
+PS> curl.exe http://localhost:8080
+<h1>숲해설 프로그램 안내</h1>  (HTML 응답 확인)
+PS> curl.exe http://localhost:8081
+<h1>숲해설 프로그램 안내</h1>  (HTML 응답 확인)
+```
+- 브라우저 접속 (주소창에 포트 표시): `screenshots/23_browser_8080.png`, `screenshots/24_browser_8081.png`
+- 터미널 증거: `screenshots/22_port_mapping.png`
+- 포트 매핑이 필요한 이유: 컨테이너는 격리된 네트워크라 내부 포트(80)로 밖에서 바로 접속할 수 없어, 호스트 포트(8080/8081)를 컨테이너 포트에 연결해 준다. 호스트 포트를 다르게 하면 같은 이미지로 여러 컨테이너를 동시에 띄울 수 있다.
 
 ### 4.5 바인드 마운트
 ```bash
@@ -211,6 +233,19 @@ git config --list
 - 원인 가설: Windows에서 컨테이너는 리눅스 환경(WSL2) 위에서 동작하는데 WSL이 설치되어 있지 않았다.
 - 확인 방법: 오류 메시지 안내에 따라 관리자 PowerShell에서 `wsl --install` 실행.
 - 해결: `wsl --install` 후 재부팅하고 Docker Desktop을 다시 실행한다. (증거: `screenshots/12_wsl_not_installed.png`, `13_wsl_install.png`)
+
+### 문제 3: 브라우저에서 `localhost:8080` 접속 시 `ERR_CONNECTION_REFUSED`
+- 문제: 컨테이너를 실행한 뒤 시간이 지나 브라우저로 접속하니 "사이트에 연결할 수 없음(연결 거부)"이 떴다.
+- 원인 가설: Docker 엔진이 꺼지면서 컨테이너도 함께 멈춰 해당 포트를 여는 프로세스가 없다.
+- 확인 방법: `docker ps -a`에서 `forest-8080`, `forest-8081`이 `Exited (255)`인 것을 확인했다. (엔진 종료 시 비정상 종료 코드 255)
+- 해결: Docker Desktop을 실행해 엔진을 켠 뒤 `docker start forest-8080 forest-8081`로 컨테이너를 다시 시작하고, 브라우저 접속이 되는 것을 확인했다. 이미지와 컨테이너는 삭제되지 않고 멈춰 있을 뿐이었다.
+- 증거: `screenshots/25_connection_refused.png`, `26_docker_start_ok.png`, `23_browser_8080.png`
+
+### 문제 4: 컨테이너 안에서 `docker` 명령 입력 시 `command not found`
+- 문제: ubuntu 컨테이너 안(`root@...:/#`)에서 `docker run ...`을 입력하자 `bash: docker: command not found`가 나왔다.
+- 원인 가설: `docker` CLI는 호스트(Windows)에 설치되어 있고, 컨테이너 안에는 없다.
+- 확인 방법: 프롬프트가 `root@...`(컨테이너 안)임을 확인했다.
+- 해결: `exit`로 컨테이너를 나와 호스트 PowerShell에서 docker 명령을 입력한다. (증거: `screenshots/16a_docker_inside_container_error.png`)
 
 ## 7) 학습 정리
 - 절대/상대 경로:
