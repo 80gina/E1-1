@@ -1,0 +1,10 @@
+# 보너스 1. Docker Compose 기초: 단일 서비스
+# docker run 명령 한 줄을 "문서화된 실행 설정"으로 바꾼 것
+services:
+  web:
+    image: nginx:alpine
+    container_name: compose-web
+    ports:
+      - "8090:80"
+    volumes:
+      - ../../site:/usr/share/nginx/html:ro

@@ -1,0 +1,19 @@
+# 보너스 2·3·4. 멀티 컨테이너 + 운영 명령 + 환경 변수
+# web(내 이미지)과 helper(보조 서비스) 2개를 함께 실행하고, 서비스 이름으로 서로 통신한다.
+services:
+  web:
+    image: forest-web:1.0          # 필수 과제에서 만든 커스텀 이미지
+    container_name: compose-multi-web
+    ports:
+      - "${HOST_PORT:-8091}:80"    # 보너스 4: 환경 변수로 호스트 포트 변경 (기본 8091)
+    environment:
+      - APP_ENV=${APP_ENV:-dev}    # 보너스 4: 환경 변수 주입 (기본 dev)
+
+  helper:
+    image: alpine:3.20
+    container_name: compose-multi-helper
+    command: sleep infinity        # 계속 켜 두고 exec로 web에 요청을 보내 본다
+    environment:
+      - APP_ENV=${APP_ENV:-dev}
+    depends_on:
+      - web
