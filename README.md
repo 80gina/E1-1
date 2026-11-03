@@ -16,8 +16,8 @@
 - [x] hello-world / ubuntu 실행
 - [x] 커스텀 이미지 빌드·실행
 - [x] 포트 매핑 접속 (8080, 8081)
-- [ ] 바인드 마운트 반영
-- [ ] 볼륨 영속성
+- [x] 바인드 마운트 반영
+- [x] 볼륨 영속성
 - [ ] Git 설정 + GitHub/VSCode 연동
 
 ## 4) 수행 로그와 검증 방법
@@ -191,22 +191,49 @@ PS> curl.exe http://localhost:8081
 - 포트 매핑이 필요한 이유: 컨테이너는 격리된 네트워크라 내부 포트(80)로 밖에서 바로 접속할 수 없어, 호스트 포트(8080/8081)를 컨테이너 포트에 연결해 준다. 호스트 포트를 다르게 하면 같은 이미지로 여러 컨테이너를 동시에 띄울 수 있다.
 
 ### 4.5 바인드 마운트
-```bash
-docker run -d -p 8082:80 --name bind-test -v "$(pwd)/site:/usr/share/nginx/html" nginx:alpine
-curl http://localhost:8082
-(site/index.html 수정)
-curl http://localhost:8082
+목적: 호스트(내 PC) 폴더를 컨테이너에 연결하면, 컨테이너를 다시 만들지 않아도 호스트에서 고친 내용이 바로 반영되는지 확인한다.
+```powershell
+PS> docker run -d -p 8082:80 --name bind-test -v "${PWD}\site:/usr/share/nginx/html" nginx:alpine
+
+# 변경 전
+PS> curl.exe http://localhost:8082
+<h1>숲해설 프로그램 안내</h1>
+<p>환경교육 현장 안내 페이지 (Docker nginx 실습)</p>
+
+# 호스트에서 site\index.html 수정
+PS> Set-Content -Path site\index.html -Encoding utf8 -Value '<!doctype html>...<h1>바인드 마운트로 바뀐 내용</h1>...'
+
+# 변경 후 (컨테이너는 그대로)
+PS> curl.exe http://localhost:8082
+<h1>바인드 마운트로 바뀐 내용</h1>
+
+# 원복
+PS> git checkout -- site/index.html
+PS> git status        # 변경 없음
 ```
+- 해석: 컨테이너를 재생성하지 않았는데 응답이 바뀌었다. COPY는 빌드 시점 복사본이고, 바인드 마운트는 호스트 폴더를 그대로 공유하기 때문이다.
+- 증거: `screenshots/27_bind_mount_before_after.png`
 
 ### 4.6 볼륨 영속성
-```bash
-docker volume create mydata
-docker run -d --name vol-test -v mydata:/data ubuntu sleep infinity
-docker exec vol-test bash -c "echo 조사기록 > /data/note.txt && cat /data/note.txt"
-docker rm -f vol-test
-docker run -d --name vol-test2 -v mydata:/data ubuntu sleep infinity
-docker exec vol-test2 cat /data/note.txt
+목적: 컨테이너를 삭제해도 볼륨에 저장한 데이터가 유지되는지 확인한다.
+```powershell
+PS> docker volume create mydata
+mydata
+PS> docker volume ls
+local     mydata
+PS> docker run -d --name vol-test -v mydata:/data ubuntu sleep infinity
+PS> docker exec vol-test bash -c "echo forest-note > /data/hello.txt && cat /data/hello.txt"
+forest-note
+
+# 컨테이너 삭제 전/후 비교
+PS> docker rm -f vol-test
+vol-test
+PS> docker run -d --name vol-test2 -v mydata:/data ubuntu sleep infinity
+PS> docker exec vol-test2 cat /data/hello.txt
+forest-note
 ```
+- 해석: 컨테이너 `vol-test`를 삭제한 뒤 새 컨테이너 `vol-test2`에 같은 볼륨을 연결했더니 `forest-note`가 그대로 남아 있었다. 컨테이너 안의 데이터는 컨테이너와 함께 사라지지만, 볼륨은 컨테이너와 독립적으로 유지된다.
+- 증거: `screenshots/32_volume_persist.png`
 
 ### 4.7 Git 설정과 GitHub 연동
 ```bash
@@ -246,6 +273,12 @@ git config --list
 - 원인 가설: `docker` CLI는 호스트(Windows)에 설치되어 있고, 컨테이너 안에는 없다.
 - 확인 방법: 프롬프트가 `root@...`(컨테이너 안)임을 확인했다.
 - 해결: `exit`로 컨테이너를 나와 호스트 PowerShell에서 docker 명령을 입력한다. (증거: `screenshots/16a_docker_inside_container_error.png`)
+
+### 문제 5: `git checkout`에서 `fatal: not a git repository`
+- 문제: 바인드 마운트 실습 후 `git checkout -- site/index.html`을 실행하자 `fatal: not a git repository (or any of the parent directories): .git`이 나왔다.
+- 원인 가설: Git 저장소가 아닌 상위 폴더(`...\sns`)에서 명령을 실행했다. (터미널이 `sns`에서 시작됨)
+- 확인 방법: 프롬프트의 경로가 `...\sns>`임을 확인했다. 저장소는 `...\sns\workstation`이다.
+- 해결: `cd C:\Users\yello\코디세이\sns\workstation`으로 이동한 뒤 다시 실행했고, `git status`가 깨끗해졌다. (증거: `screenshots/30_not_a_git_repository.png`, `27_bind_mount_before_after.png`)
 
 ## 7) 학습 정리
 - 절대/상대 경로:
