@@ -26,7 +26,7 @@
 | | 내부 포트로 직접 접속할 수 없는 이유와 매핑이 필요한 이유 | **8** | `45` |
 | | 절대/상대 경로를 고르는 상황 | **8** | - |
 | | 권한 숫자(755, 644) 결정 규칙 | **8**, 4.3 | `17` |
-| **4. 심층 인터뷰** | 호스트 포트 충돌 시 진단 순서 | **9** | - |
+| **4. 심층 인터뷰** | 호스트 포트 충돌 시 진단 순서 (**직접 재현**) | **9** | `56`, `57`, `57a` |
 | | 데이터 유실 방지 대안 | **9** | `32`, `27` |
 | | 가장 어려웠던 지점과 해결 과정(가설→확인→조치) | **9**, 6) 트러블슈팅 | `25`, `26` |
 | **5. 보너스** | Compose, 환경 변수, SSH 키 | 6-1 | `40`~`55` |
@@ -555,7 +555,34 @@ E1-1/
    - Linux/macOS: `lsof -i :8080`
 4. **조치한다.** 점유한 컨테이너는 `docker stop`/`docker rm`, 다른 프로그램은 종료하거나, **호스트 포트를 바꾼다** (`-p 8090:80`).
 5. **다시 확인한다.** `docker ps`의 PORTS와 `curl`로 접속을 확인한다.
-- 참고: 포트 충돌을 일부러 재현하지는 않았습니다. 대신 Compose에서 `HOST_PORT` 환경 변수로 호스트 포트를 8091에서 8095로 **파일 수정 없이** 바꿀 수 있음을 확인했습니다. (`49`)
+#### 직접 재현한 결과 (같은 호스트 포트 8080을 두 컨테이너에 매핑)
+```powershell
+PS> docker run -d -p 8080:80 --name conflict-a nginx:alpine       # 8080 점유
+PS> docker run -d -p 8080:80 --name conflict-b nginx:alpine       # 같은 포트로 두 번째 실행
+docker: Error response from daemon: failed to set up container networking: driver failed programming
+external connectivity on endpoint conflict-b (...): Bind for 0.0.0.0:8080 failed: port is already allocated
+
+PS> docker ps                                                     # 2) Docker 안에서 누가 쓰나
+conflict-a   nginx:alpine   Up   0.0.0.0:8080->80/tcp, [::]:8080->80/tcp
+PS> docker ps -a                                                  #    실패한 conflict-b는 Created 상태로 남음
+
+PS> netstat -ano | findstr ":8080"                                # 3) 호스트 쪽에서 누가 쓰나
+  TCP    0.0.0.0:8080     0.0.0.0:0     LISTENING     10576
+PS> tasklist /FI "PID eq 10576"                                   #    PID가 어떤 프로그램인가
+com.docker.backend.exe       10576 Console
+
+PS> docker rm conflict-b                                          # 4) 조치: 실패한 컨테이너 정리 후 호스트 포트 변경
+PS> docker run -d -p 8090:80 --name conflict-c nginx:alpine
+PS> docker ps
+conflict-c   Up   0.0.0.0:8090->80/tcp, [::]:8090->80/tcp
+conflict-a   Up   0.0.0.0:8080->80/tcp, [::]:8080->80/tcp         #    두 컨테이너가 동시에 Up
+PS> docker rm -f conflict-a conflict-c                            # 정리 (8080 비움)
+```
+- 결과: 같은 호스트 포트는 한 번에 하나의 대상만 쓸 수 있어 두 번째 실행이 `port is already allocated`로 실패했다. 점유자는 Docker(`com.docker.backend.exe`)였고, 호스트 포트를 8090으로 바꾸자 두 컨테이너가 동시에 실행됐다.
+- 새로 알게 된 점: 실패한 컨테이너(`conflict-b`)는 **`Created` 상태로 남으므로** 정리해야 한다.
+- 작은 실수: 처음 `tasklist` 필터에 PID 숫자 대신 글자 `숫자`를 그대로 입력해 `검색 필터를 알 수 없습니다`가 나왔다. `netstat` 마지막 열의 실제 PID(`10576`)로 바꿔 입력해 해결했다. (`57`의 가운데 부분)
+- 증거: `screenshots/56_port_conflict_error.png`(오류), `57_port_conflict_diagnosis.png`(진단, 조치, 정리), `57a_port_conflict_pid.png`(PID 확인)
+- 참고: Compose에서는 `HOST_PORT` 환경 변수로 호스트 포트를 8091에서 8095로 **파일 수정 없이** 바꿀 수 있음도 확인했습니다. (`49`)
 
 ### 컨테이너 삭제 후 데이터가 사라지는 문제와 방지 대안
 - **이번 미션에서 의도치 않게 데이터가 사라진 경험은 없었습니다.** 다만 컨테이너 안에 쓴 파일(예: ubuntu `u1`의 `/tmp/f.txt`)은 그 컨테이너를 `docker rm`하면 함께 사라집니다.
