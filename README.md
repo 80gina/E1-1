@@ -7,6 +7,7 @@
 | 프로젝트 URL | https://github.com/80gina/E1-1 |
 | Branch명 | **`main`** (평가지에 `master`로 적혀 있어도 `main`을 확인해 주세요) |
 | 환경 | Windows 11 + PowerShell + Docker Desktop(WSL2). 과정 안내의 OrbStack 대신 사용했습니다. (6-2의 "환경 대체" 참고) |
+| 쉬운 설명판 | 이 문서를 초등학생도 이해할 수 있게 다시 풀어 쓰고 증거 사진 57장을 모두 실은 [README_쉬운설명판.md](README_쉬운설명판.md) / [PDF](README_쉬운설명판.pdf) |
 
 ### 평가 문항 ↔ 확인 위치
 | 평가 항목 | 문항 | 확인 위치 (README 장) | 증거 이미지 |
